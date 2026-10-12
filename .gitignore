@@ -16,3 +16,5 @@ inspect_battlenet_result.py
 fake_adapters.py
 inspect_steam_dom.py
 test_battlenet_error_classification.py
+test_steam_response_classification.py
+test_handler_worker.py
