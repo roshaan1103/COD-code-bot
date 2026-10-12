@@ -1,16 +1,14 @@
 from datetime import datetime, timezone
 
 from app.chat import ChatMessage
-from app.code_detector import detect_code
+from app.code_detector import detect_codes
 from app.deduplicator import CodeDeduplicator
 from app.redemption.base import RedemptionJob
 from app.redemption.queue import RedemptionQueue
 
 
 # One deduplicator instance for the lifetime of the application.
-#
-# This is important:
-# We want the cache to persist between incoming messages.
+# Its cache persists between incoming messages.
 deduplicator = CodeDeduplicator()
 
 
@@ -24,11 +22,11 @@ async def handle_chat_message(
     """
     Process one normalized Twitch chat message.
 
-    Only messages sent by the broadcaster are passed
-    to the giveaway code detector.
+    Only messages from the broadcaster or an authorized
+    moderator are considered for giveaway code detection.
 
-    Newly detected codes are placed into the redemption
-    queue without waiting for the redemption operation.
+    Each newly detected platform/code pair is independently
+    checked for duplicates and placed into the redemption queue.
     """
 
     received_at = message.received_at
@@ -45,93 +43,97 @@ async def handle_chat_message(
     )
 
     # ---------------------------------------------------------
-    # Step 1: Ignore messages that were not sent by the streamer
+    # Step 1: Authorize the broadcaster or a moderator
     # ---------------------------------------------------------
 
-    if message.chatter_id != message.broadcaster_id:
-        return
-
-    print(
-        "[BROADCASTER] "
-        "Message was sent by the streamer."
+    is_broadcaster = (
+        message.chatter_id == message.broadcaster_id
     )
 
-    # ---------------------------------------------------------
-    # Step 2: Detect platform + code
-    # ---------------------------------------------------------
-
-    detected_code = detect_code(message.text)
-
-    if detected_code is None:
-        return
-
-    # ---------------------------------------------------------
-    # Step 3: Check whether this code was already detected
-    # ---------------------------------------------------------
-
-    if deduplicator.is_duplicate(
-        detected_code.code
-    ):
+    if not is_broadcaster and not message.is_moderator:
         print(
-            "[DUPLICATE] "
-            f"Code already detected recently: "
-            f"{detected_code.code}"
+            "[IGNORED] "
+            "Message sender is neither the broadcaster "
+            "nor an authorized moderator."
         )
         return
 
-    # ---------------------------------------------------------
-    # Step 4: Measure local detection latency
-    # ---------------------------------------------------------
-
-    detected_at = datetime.now(timezone.utc)
-
-    detection_latency_ms = (
-        detected_at - received_at
-    ).total_seconds() * 1000
-
-    # ---------------------------------------------------------
-    # Step 5: Create redemption job
-    # ---------------------------------------------------------
-
-    job = RedemptionJob(
-        platform=detected_code.platform,
-        code=detected_code.code,
-        streamer=message.broadcaster_login,
-    )
+    if is_broadcaster:
+        print(
+            "[BROADCASTER] "
+            "Message was sent by the streamer."
+        )
+    else:
+        print(
+            "[MODERATOR] "
+            "Message was sent by a moderator."
+        )
 
     # ---------------------------------------------------------
-    # Step 6: Queue redemption job
+    # Step 2: Detect all platform/code pairs in the message
     # ---------------------------------------------------------
 
-    await redemption_queue.put(job)
+    detected_codes = detect_codes(message.text)
+
+    if not detected_codes:
+        return
 
     # ---------------------------------------------------------
-    # Step 7: Report newly detected code
+    # Step 3: Process each detected code independently
     # ---------------------------------------------------------
 
-    print()
-    print("=" * 60)
-    print("GIVEAWAY CODE DETECTED")
-    print("=" * 60)
-    print(
-        f"Platform        : "
-        f"{detected_code.platform}"
-    )
-    print(
-        f"Code            : "
-        f"{detected_code.code}"
-    )
-    print(
-        f"Streamer        : "
-        f"{message.broadcaster_login}"
-    )
-    print(
-        f"Detection time  : "
-        f"{detection_latency_ms:.3f} ms"
-    )
-    print(
-        f"Queue size      : "
-        f"{redemption_queue.size()}"
-    )
-    print("=" * 60)
-    print()
+    for detected_code in detected_codes:
+
+        # -----------------------------------------------------
+        # Step 3a: Check for duplicates
+        # -----------------------------------------------------
+
+        if deduplicator.is_duplicate(detected_code.code):
+            print(
+                "[DUPLICATE] "
+                f"Code already detected recently: "
+                f"{detected_code.code}"
+            )
+            continue
+
+        # -----------------------------------------------------
+        # Step 3b: Measure detection latency
+        # -----------------------------------------------------
+
+        detected_at = datetime.now(timezone.utc)
+
+        detection_latency_ms = (
+            detected_at - received_at
+        ).total_seconds() * 1000
+
+        # -----------------------------------------------------
+        # Step 3c: Create the redemption job
+        # -----------------------------------------------------
+
+        job = RedemptionJob(
+            platform=detected_code.platform,
+            code=detected_code.code,
+            streamer=message.broadcaster_login,
+        )
+
+        # -----------------------------------------------------
+        # Step 3d: Add the job to the queue
+        # -----------------------------------------------------
+
+        await redemption_queue.put(job)
+
+        # -----------------------------------------------------
+        # Step 3e: Report the detected code
+        # -----------------------------------------------------
+
+        print()
+        print("=" * 60)
+        print("GIVEAWAY CODE DETECTED")
+        print("=" * 60)
+        print(f"Platform        : {detected_code.platform}")
+        print(f"Code            : {detected_code.code}")
+        print(f"Streamer        : {message.broadcaster_login}")
+        print(f"Detection time  : {detection_latency_ms:.3f} ms")
+        print(f"Queue size      : {redemption_queue.size()}")
+        print("=" * 60)
+        print()

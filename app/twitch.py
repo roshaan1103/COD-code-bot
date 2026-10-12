@@ -16,6 +16,7 @@ from app.config import (
 
 SCOPES = [
     "user:read:chat",
+    "chat:read",
 ]
 
 HOST = "localhost"

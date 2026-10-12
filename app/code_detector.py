@@ -3,23 +3,6 @@ from dataclasses import dataclass
 from typing import Optional
 
 
-# Initial giveaway code format:
-#
-# XXXX-XXXX-XXXX-XXXX
-#
-# Each X can be an uppercase/lowercase letter or number.
-CODE_PATTERN = re.compile(
-    r"\b([A-Z0-9]{4}(?:-[A-Z0-9]{4}){3})\b",
-    re.IGNORECASE,
-)
-
-
-PLATFORM_PATTERN = re.compile(
-    r"\b(steam|battlenet|xbox|playstation)\s*:",
-    re.IGNORECASE,
-)
-
-
 @dataclass(frozen=True)
 class DetectedCode:
     """
@@ -30,43 +13,147 @@ class DetectedCode:
     code: str
 
 
-def detect_code(text: str) -> Optional[DetectedCode]:
+# Platform aliases are matched case-insensitively.
+#
+# Short aliases such as BN require a colon.
+# Longer aliases may use a colon or whitespace as a separator.
+PLATFORM_ALIASES = {
+    "steam": "steam",
+    "battle.net": "battle.net",
+    "battle net": "battle.net",
+    "battlenet": "battle.net",
+    "bnet": "battle.net",
+    "bn": "battle.net",
+}
+
+# Longer aliases are checked first to prevent a shorter alias
+# from taking precedence over a more specific one.
+_ALIAS_PATTERN = "|".join(
+    re.escape(alias)
+    for alias in sorted(PLATFORM_ALIASES, key=len, reverse=True)
+)
+
+PLATFORM_PATTERN = re.compile(
+    rf"(?<!\w)(?P<alias>{_ALIAS_PATTERN})(?!\w)"
+    rf"\s*(?P<separator>:)",
+    re.IGNORECASE,
+)
+
+# Explicit punctuation that can end a code candidate.
+# A hyphen is deliberately excluded because it may be part of a code.
+CODE_DELIMITERS = ",;|"
+
+
+def _normalize_platform(alias: str) -> str:
     """
-    Detect a platform and giveaway code from a chat message.
+    Convert a recognized platform alias to its canonical name.
+    """
 
-    Expected format:
+    normalized_alias = re.sub(r"\s+", " ", alias.strip().lower())
+    return PLATFORM_ALIASES[normalized_alias]
 
-        Steam:XXXX-XXXX-XXXX-XXXX
-        Battlenet:XXXX-XXXX-XXXX-XXXX
-        Xbox:XXXX-XXXX-XXXX-XXXX
-        PlayStation:XXXX-XXXX-XXXX-XXXX
 
-    Returns:
-        DetectedCode if a valid-looking code is found.
-        None otherwise.
+def _extract_candidate(segment: str) -> Optional[str]:
+    """
+    Extract a candidate from the text following a platform label.
+
+    The candidate ends at:
+    - whitespace,
+    - a configured delimiter,
+    - or the end of the segment.
+
+    No fixed length or grouping format is required.
+    """
+
+    segment = segment.strip()
+
+    if not segment:
+        return None
+
+    # A code candidate ends at the first whitespace or explicit
+    # delimiter. This intentionally does not validate the code's
+    # length or character grouping.
+    candidate_match = re.match(
+        r"[^ \t\r\n,;|]+",
+        segment,
+    )
+
+    if not candidate_match:
+        return None
+
+    candidate = candidate_match.group(0).strip()
+
+    # Reject punctuation-only candidates.
+    if not candidate or not any(character.isalnum() for character in candidate):
+        return None
+
+    return candidate.upper()
+
+
+def detect_codes(text: str) -> list[DetectedCode]:
+    """
+    Detect one or more platform/code pairs in a chat message.
+
+    Examples:
+        Steam: ABCDE-BBBBB-CCCCC
+        Battle.net: example-code
+        BNet: example-code
+        BN: example-code
+
+    The sender's authorization must be checked separately by the
+    message handler before detected codes are queued.
     """
 
     if not text:
-        return None
+        return []
 
-    platform_match = PLATFORM_PATTERN.search(text)
+    platform_matches = list(PLATFORM_PATTERN.finditer(text))
 
-    if not platform_match:
-        return None
+    if not platform_matches:
+        return []
 
-    platform = platform_match.group(1).lower()
+    detected_codes: list[DetectedCode] = []
 
-    code_match = CODE_PATTERN.search(
-        text,
-        platform_match.end(),
-    )
+    for index, platform_match in enumerate(platform_matches):
+        # Only inspect the text between this label and the next
+        # recognized platform label.
+        segment_start = platform_match.end()
 
-    if not code_match:
-        return None
+        if index + 1 < len(platform_matches):
+            segment_end = platform_matches[index + 1].start()
+        else:
+            segment_end = len(text)
 
-    code = code_match.group(1).upper()
+        segment = text[segment_start:segment_end]
 
-    return DetectedCode(
-        platform=platform,
-        code=code,
-    )
+        # Remove leading whitespace and optional common separators.
+        segment = segment.lstrip(" \t\r\n:=")
+
+        candidate = _extract_candidate(segment)
+
+        if candidate is None:
+            continue
+
+        detected_codes.append(
+            DetectedCode(
+                platform=_normalize_platform(
+                    platform_match.group("alias")
+                ),
+                code=candidate,
+            )
+        )
+
+    return detected_codes
+
+
+def detect_code(text: str) -> Optional[DetectedCode]:
+    """
+    Backward-compatible helper returning the first detected code.
+
+    Existing code that expects a single DetectedCode can continue
+    using this function.
+    """
+
+    codes = detect_codes(text)
+
+    return codes[0] if codes else None

@@ -18,3 +18,13 @@ inspect_steam_dom.py
 test_battlenet_error_classification.py
 test_steam_response_classification.py
 test_handler_worker.py
+test_irc_chat.py
+test_sender_filter.py
+test_twitch_irc.py
+test_message_pipeline.py
+test_redemption_worker.py
+test_code_detector.py
+test_multiple_code_pipeline.py
+test_handler_worker_integration.py
+
+eventsub.py
