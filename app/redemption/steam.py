@@ -30,8 +30,8 @@ class SteamAdapter:
         Prepare the Steam redemption page once during browser startup.
 
         This method verifies the required controls and checks the
-        Steam agreement checkbox so that the per-code redemption
-        path does not need to perform that work.
+        agreement checkbox so that the per-code redemption path
+        does not need to perform that work.
         """
 
         page = self.browser.steam_page
@@ -46,13 +46,11 @@ class SteamAdapter:
         print("PREPARING STEAM REDEMPTION PAGE")
         print("=" * 60)
 
-        # Cache the locators so redeem() can reuse them.
         self.product_key = page.locator("#product_key")
         checkbox = page.locator("#accept_ssa")
         self.register_button = page.locator("#register_btn")
         self.error_display = page.locator("#error_display")
 
-        # Verify required controls.
         if await self.product_key.count() != 1:
             raise RuntimeError(
                 "Steam product key input #product_key "
@@ -77,53 +75,47 @@ class SteamAdapter:
                 "was not found."
             )
 
-        # Prepare the agreement once.
         if not await checkbox.is_checked():
             await checkbox.check()
 
-        # Verify that the checkbox actually became checked.
         if not await checkbox.is_checked():
             raise RuntimeError(
                 "Steam agreement checkbox could not be checked."
             )
 
-        print(
-            "[STEAM] Product key input ready."
-        )
-        print(
-            "[STEAM] Agreement checkbox ready."
-        )
-        print(
-            "[STEAM] Continue control ready."
-        )
-        print(
-            "[STEAM] Error container ready."
-        )
-        print(
-            "[STEAM] Agreement checkbox is checked."
-        )
+        print("[STEAM] Product key input ready.")
+        print("[STEAM] Agreement checkbox ready.")
+        print("[STEAM] Continue control ready.")
+        print("[STEAM] Error container ready.")
+        print("[STEAM] Agreement checkbox is checked.")
 
         print()
-        print(
-            "[STEAM] Redemption page READY."
-        )
+        print("[STEAM] Redemption page READY.")
         print("=" * 60)
 
     async def redeem(
-            self,
-            job: RedemptionJob,
+        self,
+        job: RedemptionJob,
     ) -> RedemptionResult:
         """
         Redeem one Steam code using the already-prepared page.
 
         Dry-run mode fills the input but never submits the code.
-        Real submission uses Steam's response to determine the result.
+
+        Real mode:
+        1. Submits the code once.
+        2. Interprets Steam's response.
+        3. Verifies the success receipt and product details.
+        4. Attempts to click Finish and return to the account page.
+
+        If activation is confirmed but the final navigation fails,
+        the redemption remains SUCCESS.
         """
 
         if (
-                self.product_key is None
-                or self.register_button is None
-                or self.error_display is None
+            self.product_key is None
+            or self.register_button is None
+            or self.error_display is None
         ):
             raise RuntimeError(
                 "Steam adapter has not been prepared."
@@ -151,7 +143,8 @@ class SteamAdapter:
         print("STEAM REDEMPTION")
         print("=" * 60)
 
-        print(f"Code           : {job.code}")
+        # Avoid printing the actual key in application logs.
+        print("[STEAM] Code loaded.")
         print(f"Streamer       : {job.streamer}")
         print(f"Dry run        : {self.dry_run}")
 
@@ -173,6 +166,7 @@ class SteamAdapter:
             print()
             print("[STEAM] Dry run enabled.")
             print("[STEAM] Submission skipped.")
+            print("[STEAM] Finish navigation skipped.")
             print("=" * 60)
 
             return RedemptionResult(
@@ -192,14 +186,13 @@ class SteamAdapter:
         submit_started_at = time.perf_counter()
 
         try:
-            # Listen for the response BEFORE clicking.
-            # This prevents us from missing a fast response.
+            # Listen before clicking so a fast response is not missed.
             async with page.expect_response(
-                    lambda response: (
-                            "/account/ajaxregisterkey/" in response.url
-                            and response.request.method == "POST"
-                    ),
-                    timeout=15000,
+                lambda response: (
+                    "/account/ajaxregisterkey/" in response.url
+                    and response.request.method == "POST"
+                ),
+                timeout=15000,
             ) as response_info:
                 await register_button.click()
 
@@ -211,7 +204,6 @@ class SteamAdapter:
                 f"[STEAM] Click completed in "
                 f"{(click_finished_at - submit_started_at) * 1000:.3f} ms"
             )
-
             print(
                 f"[STEAM] Response HTTP status: {response.status}"
             )
@@ -261,12 +253,9 @@ class SteamAdapter:
         if not response.ok:
             print()
             print(
-                f"[STEAM] HTTP request failed: "
-                f"{response.status}"
+                f"[STEAM] HTTP request failed: {response.status}"
             )
-            print(
-                "[STEAM] Redemption cannot be confirmed."
-            )
+            print("[STEAM] Redemption cannot be confirmed.")
             print("=" * 60)
 
             return RedemptionResult(
@@ -310,19 +299,155 @@ class SteamAdapter:
             )
 
         # ---------------------------------------------------------
-        # SUCCESS
+        # SUCCESS: VERIFY RECEIPT, CAPTURE PRODUCT, CLICK FINISH
         # ---------------------------------------------------------
 
         if result_data.get("success") == 1:
             print()
-            print("[STEAM] SUCCESS: Steam confirmed redemption.")
+            print(
+                "[STEAM] Response indicates successful redemption."
+            )
+            print("[STEAM] Verifying the receipt page...")
+
+            receipt_form = page.locator("#receipt_form")
+            product_list = page.locator(
+                "#registerkey_productlist"
+            )
+
+            try:
+                await receipt_form.wait_for(
+                    state="visible",
+                    timeout=5000,
+                )
+
+                await product_list.wait_for(
+                    state="visible",
+                    timeout=3000,
+                )
+
+                # Capture the product name BEFORE leaving the receipt.
+                product_text = (
+                    await product_list.inner_text()
+                ).strip()
+
+                if not product_text:
+                    raise RuntimeError(
+                        "The Steam receipt contains no product details."
+                    )
+
+            except Exception as exc:
+                print(
+                    "[STEAM] Receipt verification failed: "
+                    f"{exc}"
+                )
+                print(
+                    "[STEAM] Returning UNKNOWN; success "
+                    "cannot be confirmed."
+                )
+                print("=" * 60)
+
+                return RedemptionResult(
+                    status="UNKNOWN",
+                    platform=job.platform,
+                    code=job.code,
+                    message=(
+                        "Steam returned a successful response, "
+                        "but a receipt containing product details "
+                        "could not be verified."
+                    ),
+                )
+
+            # At this point, activation has been confirmed by the
+            # successful response and populated receipt.
+            print()
+            print("[STEAM] SUCCESS: Redemption receipt verified.")
+            print(f"[STEAM] Receipt product: {product_text}")
+
+            # -----------------------------------------------------
+            # CLICK FINISH
+            # -----------------------------------------------------
+
+            finish_succeeded = False
+            finish_message = ""
+
+            try:
+                # The inspected Steam DOM showed that Finish is the
+                # receipt link pointing to the Steam account page.
+                finish_button = receipt_form.locator(
+                    "a[href='https://store.steampowered.com/account']"
+                )
+
+                if await finish_button.count() != 1:
+                    raise RuntimeError(
+                        "Could not uniquely identify the Steam Finish link."
+                    )
+
+                # Verify the expected destination before clicking.
+                finish_href = await finish_button.get_attribute("href")
+
+                if finish_href != "https://store.steampowered.com/account":
+                    raise RuntimeError(
+                        "The Steam Finish link destination was unexpected."
+                    )
+
+                print("[STEAM] Clicking Finish...")
+
+                # Register the navigation wait before clicking.
+                async with page.expect_navigation(
+                    wait_until="domcontentloaded",
+                    timeout=10000,
+                ):
+                    await finish_button.click()
+
+                # Confirm the resulting page is the expected account URL.
+                await page.wait_for_url(
+                    "https://store.steampowered.com/account",
+                    wait_until="domcontentloaded",
+                    timeout=5000,
+                )
+
+                finish_succeeded = True
+
+                print(
+                    "[STEAM] Finish clicked; account page navigation confirmed."
+                )
+
+            except Exception as exc:
+                # Do not downgrade a confirmed redemption because
+                # post-redemption navigation failed.
+                finish_message = (
+                    " Activation was confirmed, but automatic Finish "
+                    "navigation could not be confirmed. "
+                    "Check the Steam browser tab."
+                )
+
+                print(
+                    "[STEAM] Finish/navigation warning: "
+                    f"{exc}"
+                )
+                print(
+                    "[STEAM] The redemption remains SUCCESS."
+                )
+
             print("=" * 60)
+
+            if finish_succeeded:
+                message = (
+                    f"Steam activation confirmed. Product: {product_text}. "
+                    "The Finish link was clicked and the account page "
+                    "navigation was confirmed."
+                )
+            else:
+                message = (
+                    f"Steam activation confirmed. Product: {product_text}."
+                    f"{finish_message}"
+                )
 
             return RedemptionResult(
                 status="SUCCESS",
                 platform=job.platform,
                 code=job.code,
-                message="Steam explicitly confirmed successful redemption.",
+                message=message,
             )
 
         # ---------------------------------------------------------
@@ -333,16 +458,15 @@ class SteamAdapter:
             "purchase_result_details"
         )
 
-        # Steam's inspected JavaScript maps result code 14
-        # to an invalid product code.
-        if purchase_result == 14:
+        # Only match actual integer result codes, not strings or booleans.
+        if type(purchase_result) is int and purchase_result == 14:
             error_text = (
                 await error_display.inner_text()
             ).strip()
 
             message = (
-                    error_text
-                    or "Steam reported an invalid product code."
+                error_text
+                or "Steam reported an invalid product code."
             )
 
             print()
@@ -357,8 +481,7 @@ class SteamAdapter:
                 message=message,
             )
 
-        # Steam result code 15 means the code was already activated.
-        if purchase_result == 15:
+        if type(purchase_result) is int and purchase_result == 15:
             message = (
                 "Steam reports that this code was already activated "
                 "on another Steam account."
@@ -375,9 +498,7 @@ class SteamAdapter:
                 message=message,
             )
 
-        # Steam result code 53 indicates too many recent activation
-        # attempts. Stop and alert rather than continuing to submit.
-        if purchase_result == 53:
+        if type(purchase_result) is int and purchase_result == 53:
             message = (
                 "Steam reports too many recent activation attempts. "
                 "Stop further redemption attempts and investigate "
@@ -403,7 +524,9 @@ class SteamAdapter:
 
         print()
         print("[STEAM] Steam returned an unrecognized failure.")
-        print(f"[STEAM] purchase_result_details: {purchase_result!r}")
+        print(
+            f"[STEAM] purchase_result_details: {purchase_result!r}"
+        )
 
         if error_text:
             print(f"[STEAM] Message: {error_text}")

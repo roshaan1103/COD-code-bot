@@ -12,8 +12,7 @@ from app.redemption.steam import SteamAdapter
 from app.redemption.worker import RedemptionWorker
 
 CHANNEL_LOGINS = [
-"oilrats",
-"timthetatman",
+"whyisitmealways1"
 ]
 
 TWITCH_USERS_URL = "https://api.twitch.tv/helix/users"
