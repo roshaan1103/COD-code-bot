@@ -37,7 +37,7 @@ class OAuthCallbackHandler(BaseHTTPRequestHandler):
 
         if error:
             print("Twitch authorization failed.")
-            print(f"Error: {error}")
+            print("The authorization provider returned an error.")
             print("=" * 60)
 
             self.send_response(400)
@@ -155,10 +155,10 @@ def main():
         tokens = exchange_authorization_code(
             server.authorization_code
         )
-    except Exception as exc:
+    except Exception:
         print()
         print("ERROR: Token exchange failed.")
-        print(exc)
+        print("Exception details omitted for security.")
 
         server.server_close()
         return
@@ -174,10 +174,10 @@ def main():
         validation = validate_access_token(
             tokens["access_token"]
         )
-    except Exception as exc:
+    except Exception:
         print()
         print("ERROR: Token validation failed.")
-        print(exc)
+        print("Exception details omitted for security.")
 
         server.server_close()
         return
@@ -185,6 +185,7 @@ def main():
     tokens["user_id"] = validation["user_id"]
     tokens["login"] = validation["login"]
     tokens["scopes"] = validation["scopes"]
+
 
     save_tokens(tokens)
 

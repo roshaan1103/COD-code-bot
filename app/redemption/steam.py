@@ -228,11 +228,17 @@ class SteamAdapter:
                 ),
             )
 
-        except Exception as exc:
+
+        except Exception:
+
             print()
-            print(f"[STEAM] Submission/result error: {exc}")
+
+            print("[STEAM] Submission/result error.")
+
             print(
+
                 "[STEAM] The outcome is unknown; do not automatically retry."
+
             )
             print("=" * 60)
 
@@ -335,11 +341,10 @@ class SteamAdapter:
                         "The Steam receipt contains no product details."
                     )
 
-            except Exception as exc:
-                print(
-                    "[STEAM] Receipt verification failed: "
-                    f"{exc}"
-                )
+
+            except Exception:
+
+                print("[STEAM] Receipt verification failed.")
                 print(
                     "[STEAM] Returning UNKNOWN; success "
                     "cannot be confirmed."
@@ -421,10 +426,7 @@ class SteamAdapter:
                     "Check the Steam browser tab."
                 )
 
-                print(
-                    "[STEAM] Finish/navigation warning: "
-                    f"{exc}"
-                )
+                print("[STEAM] Finish/navigation warning.")
                 print(
                     "[STEAM] The redemption remains SUCCESS."
                 )
@@ -465,13 +467,13 @@ class SteamAdapter:
             ).strip()
 
             message = (
-                error_text
-                or "Steam reported an invalid product code."
+                    error_text
+                    or "Steam reported an invalid product code."
             )
 
             print()
             print("[STEAM] INVALID_CODE")
-            print(f"[STEAM] Message: {message}")
+            print("[STEAM] Steam reported an invalid product code.")
             print("=" * 60)
 
             return RedemptionResult(
@@ -524,12 +526,10 @@ class SteamAdapter:
 
         print()
         print("[STEAM] Steam returned an unrecognized failure.")
-        print(
-            f"[STEAM] purchase_result_details: {purchase_result!r}"
-        )
+        print("[STEAM] Steam returned unrecognized response details.")
 
         if error_text:
-            print(f"[STEAM] Message: {error_text}")
+            print("[STEAM] Additional error details were returned.")
 
         print("[STEAM] Returning UNKNOWN rather than guessing.")
         print("=" * 60)

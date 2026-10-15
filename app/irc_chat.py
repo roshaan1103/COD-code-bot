@@ -189,7 +189,7 @@ async def listen_to_channel(
                         f"[IRC CHAT] #{channel_login} "
                         f"| {role} "
                         f"| {chat_message.chatter_login}: "
-                        f"{chat_message.text}"
+                        "[Message content omitted]"
                     )
 
                     await handle_chat_message(chat_message)

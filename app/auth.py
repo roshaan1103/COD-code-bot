@@ -38,8 +38,8 @@ def exchange_authorization_code(code: str) -> dict:
 
     if response.status_code != 200:
         raise RuntimeError(
-            f"Twitch token exchange failed: "
-            f"{response.status_code} - {response.text}"
+            f"Twitch token exchange failed "
+            f"with HTTP status {response.status_code}."
         )
 
     tokens = response.json()
@@ -84,8 +84,8 @@ def validate_access_token(access_token: str) -> dict:
 
     if response.status_code != 200:
         raise RuntimeError(
-            f"Twitch token validation failed: "
-            f"{response.status_code} - {response.text}"
+            f"Twitch token validation failed "
+            f"with HTTP status {response.status_code}."
         )
 
     return response.json()

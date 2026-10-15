@@ -39,7 +39,7 @@ async def handle_chat_message(
         f"[{timestamp}] "
         f"[{message.broadcaster_login}] "
         f"{message.chatter_name}: "
-        f"{message.text}"
+        "[Message content omitted]"
     )
 
     # ---------------------------------------------------------
@@ -91,8 +91,7 @@ async def handle_chat_message(
         if deduplicator.is_duplicate(detected_code.code):
             print(
                 "[DUPLICATE] "
-                f"Code already detected recently: "
-                f"{detected_code.code}"
+                "Code already detected recently; skipping."
             )
             continue
 
@@ -131,7 +130,7 @@ async def handle_chat_message(
         print("GIVEAWAY CODE DETECTED")
         print("=" * 60)
         print(f"Platform        : {detected_code.platform}")
-        print(f"Code            : {detected_code.code}")
+        print("Code            : [REDACTED]")
         print(f"Streamer        : {message.broadcaster_login}")
         print(f"Detection time  : {detection_latency_ms:.3f} ms")
         print(f"Queue size      : {redemption_queue.size()}")

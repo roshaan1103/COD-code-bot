@@ -388,7 +388,7 @@ async def run():
                                     f"[CHAT] "
                                     f"#{chat_message.broadcaster_login} "
                                     f"| {chat_message.chatter_login}: "
-                                    f"{chat_message.text}"
+                                    "[Message content omitted]"
                                 )
 
                                 schedule_message_handler(

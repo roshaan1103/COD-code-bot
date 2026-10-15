@@ -26,5 +26,12 @@ test_redemption_worker.py
 test_code_detector.py
 test_multiple_code_pipeline.py
 test_handler_worker_integration.py
+test_battlenet_adapter_classification.py
+test_battlenet_rate_limit_integration.py
+test_youtube_responsiveness.py
+test_youtube_message_integration.py
+test_youtube_normalization.py
+inspect_battlenet_page.py
+test_battlenet_confirmation.py
 
 eventsub.py

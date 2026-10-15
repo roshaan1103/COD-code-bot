@@ -1,0 +1,16 @@
+{
+  "access_token": "7z0l7nkl5nhfwb0mse0kl28mg16vug",
+  "expires_in": 15322,
+  "refresh_token": "l5e8ig17z6plfch0xp2xcyijt1xokxiusudreybrlbasoeywa3",
+  "scope": [
+    "chat:read",
+    "user:read:chat"
+  ],
+  "token_type": "bearer",
+  "user_id": "270380908",
+  "login": "dominent_orion",
+  "scopes": [
+    "chat:read",
+    "user:read:chat"
+  ]
+}

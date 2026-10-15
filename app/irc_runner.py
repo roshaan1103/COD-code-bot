@@ -5,6 +5,7 @@ import httpx
 from app.auth import load_tokens, validate_access_token
 from app.config import TWITCH_CLIENT_ID
 from app.irc_chat import listen_to_channel
+from app.youtube_chat import VIDEO_ID, listen_to_youtube_chat
 from app.message_handler import redemption_queue
 from app.browser.manager import BrowserManager
 from app.redemption.battlenet import BattleNetAdapter
@@ -12,7 +13,8 @@ from app.redemption.steam import SteamAdapter
 from app.redemption.worker import RedemptionWorker
 
 CHANNEL_LOGINS = [
-"whyisitmealways1"
+#"whyisitmealways1"
+    "dkdynamite1"
 ]
 
 TWITCH_USERS_URL = "https://api.twitch.tv/helix/users"
@@ -173,14 +175,16 @@ async def main() -> None:
 
         print()
         print("=" * 60)
-        print("COD LIVE CODE MONITOR - IRC LISTENER")
+        print("COD LIVE CODE MONITOR - TWITCH + YOUTUBE")
         print("=" * 60)
         print(f"Authenticated account: {username}")
-        print(f"Configured channels : {len(broadcasters)}")
+        print(f"Twitch channels      : {len(broadcasters)}")
+        print(f"YouTube video ID     : {VIDEO_ID}")
         print("Redemption mode      : DRY RUN")
         print("Press Ctrl+C to stop.")
         print("=" * 60)
 
+        # Start one Twitch listener for each configured channel.
         for broadcaster in broadcasters:
             listener_task = asyncio.create_task(
                 listen_to_channel(
@@ -194,22 +198,38 @@ async def main() -> None:
 
             listener_tasks.append(listener_task)
 
+        # Start exactly one YouTube listener, regardless
+        # of how many Twitch channels are configured.
+        youtube_task = asyncio.create_task(
+            listen_to_youtube_chat(),
+            name="youtube-live-chat",
+        )
+
+        listener_tasks.append(youtube_task)
+
+        print("[IRC RUNNER] YouTube listener started.")
+
         # Keep the runner alive while listeners are running.
         results = await asyncio.gather(
             *listener_tasks,
             return_exceptions=True,
         )
 
-        for broadcaster, result in zip(broadcasters, results):
-            if isinstance(result, Exception):
+        # Report errors against the actual listener that failed.
+        for task, result in zip(listener_tasks, results):
+            if isinstance(result, BaseException):
+                if isinstance(result, asyncio.CancelledError):
+                    continue
+
                 print(
-                    f"[IRC RUNNER] Listener for "
-                    f"#{broadcaster['login']} stopped: {result}"
+                    f"[IRC RUNNER] Listener "
+                    f"'{task.get_name()}' stopped with an error: "
+                    f"{type(result).__name__}: {result}"
                 )
 
         if all(task.done() for task in listener_tasks):
             print(
-                "[IRC RUNNER] All IRC listeners have stopped."
+                "[IRC RUNNER] All listeners have stopped."
             )
 
     finally:

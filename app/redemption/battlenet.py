@@ -12,9 +12,10 @@ def classify_battlenet_error(
     error_text: str,
 ) -> tuple[str, str]:
     """
-    Classify a Battle.net error only when its wording
-    explicitly identifies an invalid code.
+    Classify Battle.net errors conservatively.
 
+    Explicit invalid-code messages return INVALID_CODE.
+    Explicit rate-limit messages return RATE_LIMITED.
     Unrecognized messages remain UNKNOWN.
     """
 
@@ -28,6 +29,7 @@ def classify_battlenet_error(
             "The error message was empty.",
         )
 
+    # Detect explicit invalid-code responses.
     invalid_code_phrases = (
         "invalid code",
         "code is invalid",
@@ -47,10 +49,67 @@ def classify_battlenet_error(
             error_text.strip(),
         )
 
+    # Detect explicit rate-limit responses.
+    rate_limit_phrases = (
+        "rate limit exceeded",
+        "rate limit reached",
+        "too many attempts",
+        "too many requests",
+        "attempt limit exceeded",
+        "attempts limit exceeded",
+        "temporarily rate limited",
+    )
+
+    if any(
+        phrase in normalized
+        for phrase in rate_limit_phrases
+    ):
+        return (
+            "RATE_LIMITED",
+            error_text.strip(),
+        )
+
+    # Do not infer a rate limit from a generic service error.
     return (
         "UNKNOWN",
         error_text.strip(),
     )
+
+async def find_confirmation_button(page):
+    """
+    Find exactly one visible, enabled button named 'Confirm'.
+
+    This helper only identifies the button. It never clicks it.
+
+    Returns:
+        The matching Playwright locator if exactly one eligible
+        button exists; otherwise, None.
+    """
+
+    candidates = page.get_by_role(
+        "button",
+        name="Confirm",
+        exact=True,
+    )
+
+    matching_buttons = []
+
+    for index in range(await candidates.count()):
+        button = candidates.nth(index)
+
+        if not await button.is_visible():
+            continue
+
+        if not await button.is_enabled():
+            continue
+
+        matching_buttons.append(button)
+
+    if len(matching_buttons) != 1:
+        return None
+
+    return matching_buttons[0]
+
 
 class BattleNetAdapter:
     platform = "battle.net"
@@ -203,9 +262,7 @@ class BattleNetAdapter:
         print("BATTLE.NET REDEMPTION")
         print("=" * 60)
 
-        print(
-            f"Code           : {job.code}"
-        )
+        print("Code           : [REDACTED]")
 
         print(
             f"Streamer       : {job.streamer}"
