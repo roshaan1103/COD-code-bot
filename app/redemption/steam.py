@@ -106,10 +106,9 @@ class SteamAdapter:
         1. Submits the code once.
         2. Interprets Steam's response.
         3. Verifies the success receipt and product details.
-        4. Attempts to click Finish and return to the account page.
 
-        If activation is confirmed but the final navigation fails,
-        the redemption remains SUCCESS.
+        A redemption is reported as SUCCESS only after the successful
+        response and receipt have been verified.
         """
 
         if (
@@ -166,7 +165,6 @@ class SteamAdapter:
             print()
             print("[STEAM] Dry run enabled.")
             print("[STEAM] Submission skipped.")
-            print("[STEAM] Finish navigation skipped.")
             print("=" * 60)
 
             return RedemptionResult(
@@ -305,7 +303,7 @@ class SteamAdapter:
             )
 
         # ---------------------------------------------------------
-        # SUCCESS: VERIFY RECEIPT, CAPTURE PRODUCT, CLICK FINISH
+        # SUCCESS: VERIFY RECEIPT AND CAPTURE PRODUCT
         # ---------------------------------------------------------
 
         if result_data.get("success") == 1:
@@ -368,82 +366,15 @@ class SteamAdapter:
             print("[STEAM] SUCCESS: Redemption receipt verified.")
             print(f"[STEAM] Receipt product: {product_text}")
 
-            # -----------------------------------------------------
-            # CLICK FINISH
-            # -----------------------------------------------------
-
-            finish_succeeded = False
-            finish_message = ""
-
-            try:
-                # The inspected Steam DOM showed that Finish is the
-                # receipt link pointing to the Steam account page.
-                finish_button = receipt_form.locator(
-                    "a[href='https://store.steampowered.com/account']"
-                )
-
-                if await finish_button.count() != 1:
-                    raise RuntimeError(
-                        "Could not uniquely identify the Steam Finish link."
-                    )
-
-                # Verify the expected destination before clicking.
-                finish_href = await finish_button.get_attribute("href")
-
-                if finish_href != "https://store.steampowered.com/account":
-                    raise RuntimeError(
-                        "The Steam Finish link destination was unexpected."
-                    )
-
-                print("[STEAM] Clicking Finish...")
-
-                # Register the navigation wait before clicking.
-                async with page.expect_navigation(
-                    wait_until="domcontentloaded",
-                    timeout=10000,
-                ):
-                    await finish_button.click()
-
-                # Confirm the resulting page is the expected account URL.
-                await page.wait_for_url(
-                    "https://store.steampowered.com/account",
-                    wait_until="domcontentloaded",
-                    timeout=5000,
-                )
-
-                finish_succeeded = True
-
-                print(
-                    "[STEAM] Finish clicked; account page navigation confirmed."
-                )
-
-            except Exception as exc:
-                # Do not downgrade a confirmed redemption because
-                # post-redemption navigation failed.
-                finish_message = (
-                    " Activation was confirmed, but automatic Finish "
-                    "navigation could not be confirmed. "
-                    "Check the Steam browser tab."
-                )
-
-                print("[STEAM] Finish/navigation warning.")
-                print(
-                    "[STEAM] The redemption remains SUCCESS."
-                )
+        # -----------------------------------------------------
+        # REDEMPTION CONFIRMED
+        # -----------------------------------------------------
 
             print("=" * 60)
 
-            if finish_succeeded:
-                message = (
-                    f"Steam activation confirmed. Product: {product_text}. "
-                    "The Finish link was clicked and the account page "
-                    "navigation was confirmed."
-                )
-            else:
-                message = (
-                    f"Steam activation confirmed. Product: {product_text}."
-                    f"{finish_message}"
-                )
+            message = (
+                f"Steam activation confirmed. Product: {product_text}."
+            )
 
             return RedemptionResult(
                 status="SUCCESS",

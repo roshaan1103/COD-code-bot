@@ -75,40 +75,7 @@ def classify_battlenet_error(
         error_text.strip(),
     )
 
-async def find_confirmation_button(page):
-    """
-    Find exactly one visible, enabled button named 'Confirm'.
 
-    This helper only identifies the button. It never clicks it.
-
-    Returns:
-        The matching Playwright locator if exactly one eligible
-        button exists; otherwise, None.
-    """
-
-    candidates = page.get_by_role(
-        "button",
-        name="Confirm",
-        exact=True,
-    )
-
-    matching_buttons = []
-
-    for index in range(await candidates.count()):
-        button = candidates.nth(index)
-
-        if not await button.is_visible():
-            continue
-
-        if not await button.is_enabled():
-            continue
-
-        matching_buttons.append(button)
-
-    if len(matching_buttons) != 1:
-        return None
-
-    return matching_buttons[0]
 
 
 class BattleNetAdapter:

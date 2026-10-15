@@ -5,6 +5,7 @@ from app.code_detector import detect_codes
 from app.deduplicator import CodeDeduplicator
 from app.redemption.base import RedemptionJob
 from app.redemption.queue import RedemptionQueue
+from app.sound_alert import play_code_detected_alert
 
 
 # One deduplicator instance for the lifetime of the application.
@@ -120,6 +121,12 @@ async def handle_chat_message(
         # -----------------------------------------------------
 
         await redemption_queue.put(job)
+
+        # -----------------------------------------------------
+        # Step 3d.1: Alert the user about the new queued code
+        # -----------------------------------------------------
+
+        play_code_detected_alert()
 
         # -----------------------------------------------------
         # Step 3e: Report the detected code
