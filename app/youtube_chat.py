@@ -3,15 +3,20 @@ from datetime import datetime, timezone
 
 import pytchat
 
+from app.config import YOUTUBE_VIDEO_ID
 from app.chat import ChatMessage
 from app.message_handler import handle_chat_message
 
 
-# YouTube video whose live chat will be monitored.
-VIDEO_ID = "SU0MbaPdsBk"
+# YouTube video ID is configured through .env.
+VIDEO_ID = YOUTUBE_VIDEO_ID
 
-# Stable identifier for this YouTube stream.
-YOUTUBE_BROADCASTER_ID = f"youtube-video:{VIDEO_ID}"
+# Stable identifier for the configured YouTube stream.
+YOUTUBE_BROADCASTER_ID = (
+    f"youtube-video:{VIDEO_ID}"
+    if VIDEO_ID
+    else None
+)
 
 # Delay between polling attempts when no messages are available.
 POLL_INTERVAL_SECONDS = 1
@@ -42,6 +47,9 @@ def _normalize_youtube_message(
     Return None for ordinary viewers or messages lacking
     required identity metadata.
     """
+
+    if not video_id:
+        return None
 
     author = item.author
 
@@ -107,6 +115,12 @@ async def listen_to_youtube_chat(
     Read YouTube live chat without blocking the event loop
     during synchronous polling operations.
     """
+
+    if not video_id:
+        raise RuntimeError(
+            "YouTube video ID is not configured. "
+            "Set YOUTUBE_VIDEO_ID in .env."
+        )
 
     chat = None
 

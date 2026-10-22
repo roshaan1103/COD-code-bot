@@ -40,6 +40,9 @@ class BrowserManager:
     async def start(self) -> None:
         """
         Start Playwright and open the redemption pages.
+
+        A navigation timeout is reported without preventing
+        the other redemption page from opening.
         """
 
         print()
@@ -56,17 +59,13 @@ class BrowserManager:
 
         self.context = (
             await self.playwright.chromium.launch_persistent_context(
-                user_data_dir=str(
-                    BROWSER_PROFILE_DIR
-                ),
+                user_data_dir=str(BROWSER_PROFILE_DIR),
                 headless=False,
             )
         )
 
         print()
-        print(
-            "Persistent browser profile:"
-        )
+        print("Persistent browser profile:")
         print(BROWSER_PROFILE_DIR)
 
         # -----------------------------------------------------
@@ -78,51 +77,71 @@ class BrowserManager:
         print()
         print("Opening Steam redemption page...")
 
-        await self.steam_page.goto(
-            STEAM_REDEEM_URL,
-            wait_until="domcontentloaded",
-        )
+        try:
+            await self.steam_page.goto(
+                STEAM_REDEEM_URL,
+                wait_until="domcontentloaded",
+                timeout=60000,
+            )
 
-        print(
-            "Steam page loaded:"
-            f" {self.steam_page.url}"
-        )
+            print(
+                "Steam page loaded:"
+                f" {self.steam_page.url}"
+            )
+
+        except Exception as exc:
+            print(
+                "[BROWSER] Steam navigation did not complete:"
+                f" {type(exc).__name__}: {exc}"
+            )
+            print(
+                "[BROWSER] Inspect the Steam tab manually."
+            )
 
         # -----------------------------------------------------
         # Battle.net
         # -----------------------------------------------------
 
-        self.battlenet_page = (
-            await self.context.new_page()
-        )
+        self.battlenet_page = await self.context.new_page()
 
         print()
-        print(
-            "Opening Battle.net redemption page..."
-        )
+        print("Opening Battle.net redemption page...")
 
-        await self.battlenet_page.goto(
-            BATTLENET_REDEEM_URL,
-            wait_until="domcontentloaded",
-        )
+        try:
+            await self.battlenet_page.goto(
+                BATTLENET_REDEEM_URL,
+                wait_until="domcontentloaded",
+                timeout=60000,
+            )
 
-        print(
-            "Battle.net page loaded:"
-            f" {self.battlenet_page.url}"
-        )
+            print(
+                "Battle.net page loaded:"
+                f" {self.battlenet_page.url}"
+            )
+
+        except Exception as exc:
+            print(
+                "[BROWSER] Battle.net navigation did not complete:"
+                f" {type(exc).__name__}: {exc}"
+            )
+            print(
+                "[BROWSER] Inspect the Battle.net tab manually."
+            )
 
         print()
         print("=" * 60)
-        print("BROWSER READY")
+        print("BROWSER READY FOR MANUAL INSPECTION")
         print("=" * 60)
         print()
         print(
-            "Check that both accounts are logged in."
+            "Check both tabs and log in manually if necessary."
+        )
+        print(
+            "Do not run redemption attempts until the pages "
+            "are confirmed to be ready."
         )
         print()
-        print(
-            "Press Ctrl+C to close the browser."
-        )
+        print("Press Ctrl+C to close the browser.")
 
     async def close(self) -> None:
         """
@@ -139,3 +158,4 @@ class BrowserManager:
             await self.playwright.stop()
 
         print("Browser closed.")
+

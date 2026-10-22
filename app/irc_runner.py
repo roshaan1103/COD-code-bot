@@ -3,28 +3,28 @@ import asyncio
 import httpx
 
 from app.auth import load_tokens, validate_access_token
-from app.config import TWITCH_CLIENT_ID
+from app.config import (
+    TWITCH_CHANNELS,
+    TWITCH_CLIENT_ID,
+    YOUTUBE_VIDEO_ID,
+)
 from app.irc_chat import listen_to_channel
-from app.youtube_chat import VIDEO_ID, listen_to_youtube_chat
+from app.youtube_chat import listen_to_youtube_chat
 from app.message_handler import redemption_queue
 from app.browser.manager import BrowserManager
 from app.redemption.battlenet import BattleNetAdapter
 from app.redemption.steam import SteamAdapter
 from app.redemption.worker import RedemptionWorker
 
-CHANNEL_LOGINS = [
-#"whyisitmealways1"
-    "dkdynamite1"
-]
 
 TWITCH_USERS_URL = "https://api.twitch.tv/helix/users"
+
 
 def get_broadcaster_by_login(
     access_token: str,
     login: str,
-    ) -> dict:
+) -> dict:
     """Retrieve a broadcaster's Twitch account details."""
-
 
     headers = {
         "Client-ID": TWITCH_CLIENT_ID,
@@ -58,13 +58,12 @@ def get_broadcaster_by_login(
 
 async def prepare_broadcasters(
     access_token: str,
-    ) -> list[dict]:
-    """Resolve configured channel logins to Twitch user records."""
-
+) -> list[dict]:
+    """Resolve configured Twitch channels to Twitch user records."""
 
     broadcasters = []
 
-    for channel_login in CHANNEL_LOGINS:
+    for channel_login in TWITCH_CHANNELS:
         try:
             broadcaster = await asyncio.to_thread(
                 get_broadcaster_by_login,
@@ -81,7 +80,11 @@ async def prepare_broadcasters(
                 f"| ID: {broadcaster['id']}"
             )
 
-        except (httpx.HTTPError, RuntimeError, KeyError) as exc:
+        except (
+            httpx.HTTPError,
+            RuntimeError,
+            KeyError,
+        ) as exc:
             print(
                 f"[CHANNEL ERROR] "
                 f"Could not look up "
@@ -97,9 +100,8 @@ async def prepare_broadcasters(
     return broadcasters
 
 
-async def main() -> None:
-    """Start IRC listeners and the existing dry-run redemption pipeline."""
-
+async def authenticate_twitch() -> tuple[str, str, list[dict]]:
+    """Load and validate Twitch credentials when Twitch is enabled."""
 
     tokens = load_tokens()
 
@@ -137,15 +139,45 @@ async def main() -> None:
 
     broadcasters = await prepare_broadcasters(access_token)
 
+    return access_token, username, broadcasters
+
+
+async def main() -> None:
+    """Start configured chat listeners and the dry-run redemption pipeline."""
+
+    twitch_enabled = bool(TWITCH_CHANNELS)
+    youtube_enabled = bool(YOUTUBE_VIDEO_ID)
+
+    if not twitch_enabled and not youtube_enabled:
+        raise RuntimeError(
+            "No chat platform is enabled. Configure "
+            "TWITCH_CHANNELS and/or YOUTUBE_VIDEO_ID in .env."
+        )
+
+    access_token = None
+    username = None
+    broadcasters = []
+
+    # Authenticate with Twitch only when Twitch is enabled.
+    if twitch_enabled:
+        access_token, username, broadcasters = (
+            await authenticate_twitch()
+        )
+    else:
+        print("[IRC RUNNER] Twitch monitoring is disabled.")
+
+    if not youtube_enabled:
+        print("[IRC RUNNER] YouTube monitoring is disabled.")
+
     browser = BrowserManager()
     worker_task = None
     listener_tasks = []
 
     try:
-        # Start the existing browser manager.
+        # Preserve the existing browser and redemption pipeline.
         await browser.start()
 
-        # IMPORTANT: Keep both adapters in dry-run mode.
+        # IMPORTANT: Both adapters must remain in dry-run mode.
         steam_adapter = SteamAdapter(
             browser=browser,
             dry_run=True,
@@ -159,7 +191,6 @@ async def main() -> None:
         await steam_adapter.prepare()
         await battlenet_adapter.prepare()
 
-        # Reuse the application's existing queue.
         worker = RedemptionWorker(
             queue=redemption_queue,
             adapters={
@@ -175,16 +206,31 @@ async def main() -> None:
 
         print()
         print("=" * 60)
-        print("COD LIVE CODE MONITOR - TWITCH + YOUTUBE")
+        print("COD LIVE CODE MONITOR")
         print("=" * 60)
-        print(f"Authenticated account: {username}")
-        print(f"Twitch channels      : {len(broadcasters)}")
-        print(f"YouTube video ID     : {VIDEO_ID}")
+
+        print(
+            f"Twitch monitoring    : "
+            f"{'ENABLED' if twitch_enabled else 'DISABLED'}"
+        )
+
+        if twitch_enabled:
+            print(f"Authenticated account: {username}")
+            print(f"Twitch channels      : {len(broadcasters)}")
+
+        print(
+            f"YouTube monitoring   : "
+            f"{'ENABLED' if youtube_enabled else 'DISABLED'}"
+        )
+
+        if youtube_enabled:
+            print(f"YouTube video ID     : {YOUTUBE_VIDEO_ID}")
+
         print("Redemption mode      : DRY RUN")
         print("Press Ctrl+C to stop.")
         print("=" * 60)
 
-        # Start one Twitch listener for each configured channel.
+        # Start Twitch listeners only when Twitch is enabled.
         for broadcaster in broadcasters:
             listener_task = asyncio.create_task(
                 listen_to_channel(
@@ -198,16 +244,18 @@ async def main() -> None:
 
             listener_tasks.append(listener_task)
 
-        # Start exactly one YouTube listener, regardless
-        # of how many Twitch channels are configured.
-        youtube_task = asyncio.create_task(
-            listen_to_youtube_chat(),
-            name="youtube-live-chat",
-        )
+        # Start YouTube only when a video ID is configured.
+        if youtube_enabled:
+            youtube_task = asyncio.create_task(
+                listen_to_youtube_chat(
+                    video_id=YOUTUBE_VIDEO_ID,
+                ),
+                name="youtube-live-chat",
+            )
 
-        listener_tasks.append(youtube_task)
+            listener_tasks.append(youtube_task)
 
-        print("[IRC RUNNER] YouTube listener started.")
+            print("[IRC RUNNER] YouTube listener started.")
 
         # Keep the runner alive while listeners are running.
         results = await asyncio.gather(
@@ -215,7 +263,7 @@ async def main() -> None:
             return_exceptions=True,
         )
 
-        # Report errors against the actual listener that failed.
+        # Report errors against the listener that failed.
         for task, result in zip(listener_tasks, results):
             if isinstance(result, BaseException):
                 if isinstance(result, asyncio.CancelledError):
@@ -227,10 +275,10 @@ async def main() -> None:
                     f"{type(result).__name__}: {result}"
                 )
 
-        if all(task.done() for task in listener_tasks):
-            print(
-                "[IRC RUNNER] All listeners have stopped."
-            )
+        if listener_tasks and all(
+            task.done() for task in listener_tasks
+        ):
+            print("[IRC RUNNER] All listeners have stopped.")
 
     finally:
         print()
@@ -238,7 +286,7 @@ async def main() -> None:
         print("SHUTTING DOWN IRC RUNNER")
         print("=" * 60)
 
-        # Cancel and await IRC listeners first.
+        # Cancel and await chat listeners first.
         for task in listener_tasks:
             if not task.done():
                 task.cancel()
@@ -259,7 +307,7 @@ async def main() -> None:
             except asyncio.CancelledError:
                 pass
 
-        # Close the browser even if listener startup or shutdown fails.
+        # Close the browser.
         print("[SHUTDOWN] Closing browser...")
         await browser.close()
 

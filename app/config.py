@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+# Twitch API credentials
 TWITCH_CLIENT_ID = os.getenv("TWITCH_CLIENT_ID")
 TWITCH_CLIENT_SECRET = os.getenv("TWITCH_CLIENT_SECRET")
 
@@ -14,8 +15,10 @@ TWITCH_REDIRECT_URI = os.getenv(
     "http://localhost:3000",
 )
 
-# Comma-separated Twitch channel logins.
-# Preserve the existing channel as the default.
+
+# Twitch channel configuration.
+# An empty TWITCH_CHANNELS value disables Twitch monitoring.
+# Multiple channels can be separated by commas.
 _raw_twitch_channels = os.getenv(
     "TWITCH_CHANNELS",
     "dominent_orion",
@@ -30,18 +33,32 @@ TWITCH_CHANNELS = list(
 )
 
 
-if not TWITCH_CLIENT_ID:
-    raise RuntimeError(
-        "TWITCH_CLIENT_ID is missing from .env"
-    )
+# YouTube configuration.
+# An empty YOUTUBE_VIDEO_ID disables YouTube monitoring.
+YOUTUBE_VIDEO_ID = os.getenv(
+    "YOUTUBE_VIDEO_ID",
+    "SU0MbaPdsBk",
+).strip()
 
-if not TWITCH_CLIENT_SECRET:
-    raise RuntimeError(
-        "TWITCH_CLIENT_SECRET is missing from .env"
-    )
 
-if not TWITCH_CHANNELS:
-    raise RuntimeError(
-        "TWITCH_CHANNELS must contain at least one channel login"
-    )
+# Twitch credentials are required only when Twitch is enabled.
+if TWITCH_CHANNELS:
+    if not TWITCH_CLIENT_ID:
+        raise RuntimeError(
+            "TWITCH_CLIENT_ID is missing from .env "
+            "while Twitch monitoring is enabled."
+        )
 
+    if not TWITCH_CLIENT_SECRET:
+        raise RuntimeError(
+            "TWITCH_CLIENT_SECRET is missing from .env "
+            "while Twitch monitoring is enabled."
+        )
+
+
+# At least one platform must be enabled.
+if not TWITCH_CHANNELS and not YOUTUBE_VIDEO_ID:
+    raise RuntimeError(
+        "Both Twitch and YouTube are disabled. "
+        "Configure TWITCH_CHANNELS, YOUTUBE_VIDEO_ID, or both."
+    )
