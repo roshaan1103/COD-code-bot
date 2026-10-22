@@ -75,9 +75,21 @@ def copy_code_to_clipboard(code: str) -> None:
     )
 
 
+
 def play_alert() -> None:
-    """Play a Windows system alert sound."""
-    winsound.MessageBeep(winsound.MB_ICONEXCLAMATION)
+    """Play the configured alert when a new COD code is detected."""
+    try:
+        winsound.Beep(1200, 1500)
+        winsound.Beep(1400, 1500)
+
+    except RuntimeError as exc:
+        # A sound problem should not interrupt code monitoring.
+        print(
+            "[SOUND ALERT] Could not play the alert: "
+            f"{exc}"
+        )
+
+
 
 
 # ============================================================
