@@ -16,15 +16,23 @@ from app.twitch_api import get_user_by_login
 
 # Twitch channel logins: no @ symbol or URL.
 TWITCH_CHANNELS = [
-    "your_first_test_channel",
-    # "your_second_test_channel",
+    "fifakillvizualz",
+    "zyro",
+    "symfuhny",
+    "nickmercs",
+    "lost",
+    "nadeshot",
+    "swagg",
+    "timthetatman",
+    "theburntpeanut"
+
 ]
 
 # Set to False if you want to monitor YouTube only.
 ENABLE_TWITCH = True
 
 # Set to False if you want to monitor Twitch only.
-ENABLE_YOUTUBE = True
+ENABLE_YOUTUBE = False
 
 # YouTube livestream video ID.
 # This uses the VIDEO_ID already configured in app.youtube_chat.
